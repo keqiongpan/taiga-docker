@@ -4,10 +4,11 @@ FROM ubuntu
 # Set the working directory to root-directory.
 WORKDIR /
 
-# Update apt sources to http://mirrors.aliyun.com/ubuntu/ .
+# Update apt source to http://mirrors.aliyun.com/ubuntu/.
+ENV DEBIAN_APTSOURCE http://mirrors.aliyun.com/ubuntu/
 RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak
 RUN cat /etc/apt/sources.list | \
-    sed 's#\(http\|https\)://[^/]*/ubuntu/#http://mirrors.aliyun.com/ubuntu/#g' \
+    sed "s#\\(http\\|https\\)://[^/]*/ubuntu/\\?#${DEBIAN_APTSOURCE}#g" \
     > /etc/apt/sources.list.aliyun
 RUN mv /etc/apt/sources.list.aliyun /etc/apt/sources.list
 
@@ -18,8 +19,9 @@ RUN apt-get install -y apt-utils
 RUN apt-get install -y sudo
 
 # Install tzdata with Asia/Shanghai.
+ENV DEBIAN_TIMEZONE Asia/Shanghai
 RUN apt-get install -y tzdata
-RUN ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+RUN ln -fs /usr/share/zoneinfo/${DEBIAN_TIMEZONE} /etc/localtime
 RUN dpkg-reconfigure -f noninteractive tzdata
 
 # Install Essential packages.
