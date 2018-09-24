@@ -3,7 +3,7 @@
 default: build
 
 clean:
-	-docker container rm 'keqiongpan/taiga'
+	-docker container rm 'keqiongpan_taiga'
 	-docker image rm 'keqiongpan/taiga:latest'
 	@echo 'Clean Finish!'
 
@@ -20,7 +20,7 @@ push: build
 	@echo 'Push dokcer image [keqiongpan/taiga:latest] Finish!'
 
 run:
-	docker run -ti --name 'keqiongpan/taiga' 'keqiongpan/taiga:latest'
+	docker run -ti --name 'keqiongpan_taiga' 'keqiongpan/taiga:latest'
 
 # Builds
 
