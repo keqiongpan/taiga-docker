@@ -24,7 +24,7 @@ RUN sed -i "s#\\(http\\|https\\)://[^/]*/ubuntu/\\?#${DEBIAN_APTSOURCE}#g" /etc/
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update
 RUN apt-get install -y apt-utils
-RUN apt-get install -y sudo inetutils-tools openssh-client openssh-server vim
+RUN apt-get install -y sudo inetutils-tools telnet ftp vsftpd openssh-client openssh-server vim
 
 # Install tzdata with Asia/Shanghai.
 ENV DEBIAN_TIMEZONE Asia/Shanghai
@@ -86,29 +86,6 @@ RUN chmod 777 /etc/nginx/conf.d
 RUN rm -f /etc/nginx/sites-enabled/default
 RUN sed -i 's/^[[:space:]]*bind[[:space:]]*.*$/bind 127.0.0.1/g' /etc/redis/redis.conf
 
-# Configure postgresql with the initial user and database.
-RUN service postgresql start && \
-    sudo -u postgres createuser taiga && \
-    sudo -u postgres createdb taiga -O taiga --encoding='utf-8' --locale=POSIX --template=template0 && \
-    service postgresql stop
-
-# Create a user named taiga, and a virtualhost for RabbitMQ (taiga-events).
-RUN service rabbitmq-server start && \
-    rabbitmqctl add_user taiga "${TAIGA_PASSWORD}" && \
-    rabbitmqctl add_vhost taiga && \
-    rabbitmqctl set_permissions -p taiga taiga ".*" ".*" ".*" && \
-    service rabbitmq-server stop
-
-# Setup basic data.
-RUN service postgresql start && \
-    su - taiga -c '/bin/bash -ic "cd /home/taiga/taiga/src/taiga-back && workon taiga && python manage.py migrate --noinput && python manage.py loaddata initial_user && python manage.py loaddata initial_project_templates && python manage.py compilemessages && python manage.py collectstatic --noinput"' && \
-    service postgresql stop
-
-# # Setup sample data.
-# RUN service postgresql start && \
-#     su - taiga -c '/bin/bash -ic "cd /home/taiga/taiga/src/taiga-back && workon taiga && python manage.py sample_data"' && \
-#     service postgresql stop
-
 # Copy taiga predefine files.
 USER taiga
 WORKDIR /home/taiga/taiga
@@ -117,4 +94,4 @@ COPY ./taiga ./
 # Sets entry-point to bash.
 USER root
 WORKDIR /home/taiga/taiga
-ENTRYPOINT ["/bin/bash", "-isc", "./bin/startup.sh && bash"]
+CMD ./bin/startup.sh && bash

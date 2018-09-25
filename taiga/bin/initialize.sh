@@ -12,7 +12,7 @@ from .common import *
 DEBUG = False
 PUBLIC_REGISTER_ENABLED = True
 SECRET_KEY = "${TAIGA_SECRET}"
-CELERY_ENABLED = True
+#CELERY_ENABLED = True
 
 MEDIA_URL = "${TAIGA_SCHEME}://${TAIGA_DOMAIN}/media/"
 STATIC_URL = "${TAIGA_SCHEME}://${TAIGA_DOMAIN}/static/"
@@ -30,12 +30,15 @@ EVENTS_PUSH_BACKEND_OPTIONS = {"url": "amqp://taiga:${TAIGA_PASSWORD}@localhost:
 
 # Uncomment and populate with proper connection parameters
 # for enable email sending. EMAIL_HOST_USER should end by @domain.tld
-#EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-#EMAIL_USE_TLS = False
-#EMAIL_HOST = "localhost"
-#EMAIL_HOST_USER = ""
-#EMAIL_HOST_PASSWORD = ""
-#EMAIL_PORT = 25
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_USE_TLS = False
+EMAIL_HOST = "localhost"
+EMAIL_HOST_USER = ""
+EMAIL_HOST_PASSWORD = ""
+EMAIL_PORT = 25
+
+# None or [] values in USER_EMAIL_ALLOWED_DOMAINS means allow any domain
+USER_EMAIL_ALLOWED_DOMAINS = None
 
 # Uncomment and populate with proper connection parameters
 # for enable github login/singin.
@@ -43,6 +46,16 @@ EVENTS_PUSH_BACKEND_OPTIONS = {"url": "amqp://taiga:${TAIGA_PASSWORD}@localhost:
 #GITHUB_API_CLIENT_SECRET = "yourgithubclientsecret"
 EOF
 ln -s $(pwd)/src/taiga-back/settings/local.py ./conf/taiga-back.py
+
+# Build ./conf/taiga-celery.py.
+cat > ./src/taiga-back/settings/celery_local.py <<EOF
+from .celery import *
+
+broker_url = 'amqp://guest:guest@localhost:5672//'
+result_backend = 'redis://localhost:6379/0'
+timezone = '${DEBIAN_TIMEZONE}'
+EOF
+ln -s $(pwd)/src/taiga-back/settings/celery_local.py ./conf/taiga-celery.py
 
 # Build ./conf/taiga-front.json.
 cat > ./src/taiga-front-dist/dist/conf.json <<EOF
@@ -149,7 +162,7 @@ ln -s /etc/circus/conf.d/circus-celery.ini ./conf/circus-celery.ini
 cat >> /etc/circus/conf.d/circus-events.ini <<EOF
 [watcher:taiga-events]
 working_dir = $(pwd)/src/taiga-events
-cmd = coffee
+cmd = /usr/local/bin/coffee
 args = index.coffee
 uid = taiga
 numprocesses = 1
