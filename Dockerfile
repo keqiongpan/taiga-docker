@@ -1,5 +1,16 @@
 # Use an official Python runtime as a parent image.
 FROM ubuntu
+MAINTAINER keqiongpan@163.com
+
+# Set environment variable default values.
+ENV TAIGA_SCHEME http
+ENV TAIGA_DOMAIN yourdomain.com
+ENV TAIGA_EMAIL system@taiga.io
+ENV TAIGA_SECRET taiga
+ENV TAIGA_PASSWORD taiga
+
+# Expose nginx ports.
+EXPOSE 80/tcp
 
 # Set the working directory to root-directory.
 WORKDIR /
@@ -7,17 +18,13 @@ WORKDIR /
 # Update apt source to http://mirrors.aliyun.com/ubuntu/.
 ENV DEBIAN_APTSOURCE http://mirrors.aliyun.com/ubuntu/
 RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak
-RUN cat /etc/apt/sources.list | \
-    sed "s#\\(http\\|https\\)://[^/]*/ubuntu/\\?#${DEBIAN_APTSOURCE}#g" \
-    > /etc/apt/sources.list.aliyun
-RUN mv /etc/apt/sources.list.aliyun /etc/apt/sources.list
+RUN sed -i "s#\\(http\\|https\\)://[^/]*/ubuntu/\\?#${DEBIAN_APTSOURCE}#g" /etc/apt/sources.list
 
 # Install Basic Tools.
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update
 RUN apt-get install -y apt-utils
-RUN apt-get install -y sudo
-RUN apt-get install -y vim
+RUN apt-get install -y sudo inetutils-tools openssh-client openssh-server vim
 
 # Install tzdata with Asia/Shanghai.
 ENV DEBIAN_TIMEZONE Asia/Shanghai
@@ -32,6 +39,7 @@ RUN apt-get install -y automake libtool libffi-dev curl git tmux gettext
 RUN apt-get install -y nginx
 RUN apt-get install -y rabbitmq-server redis-server
 RUN apt-get install -y circus
+RUN apt-get install -y postfix mailutils
 
 # The component taiga-back uses postgresql (>= 9.4) as database.
 RUN apt-get install -y postgresql postgresql-contrib
@@ -42,41 +50,71 @@ RUN apt-get install -y python3 python3-pip python-dev python3-dev python-pip vir
 RUN apt-get install -y libxml2-dev libxslt-dev
 RUN apt-get install -y libssl-dev libffi-dev
 
+# Install nodejs.
+RUN apt-get install -y nodejs npm
+RUN npm install -g coffeescript
+
 # Create a user named taiga, and give it root permissions.
 RUN useradd -ms /bin/bash taiga
 RUN adduser taiga sudo
 
-# Configure postgresql with the initial user and database.
-RUN service postgresql start && \
-    sudo -u postgres createuser taiga && \
-    sudo -u postgres createdb taiga -O taiga --encoding='utf-8' --locale=POSIX --template=template0
-
-# Create a user named taiga, and a virtualhost for RabbitMQ (taiga-events).
-ENV PASSWORD_FOR_EVENTS taiga
-RUN service rabbitmq-server start && \
-    rabbitmqctl add_user taiga "${PASSWORD_FOR_EVENTS}" && \
-    rabbitmqctl add_vhost taiga && \
-    rabbitmqctl set_permissions -p taiga taiga ".*" ".*" ".*"
-
 # Create the taiga folders.
 USER taiga
-RUN mkdir -p /home/taiga/taiga/log /home/taiga/taiga/conf /home/taiga/taiga/src
+RUN mkdir -p /home/taiga/taiga/bin /home/taiga/taiga/conf /home/taiga/taiga/log /home/taiga/taiga/src
 WORKDIR /home/taiga/taiga/src
 
 # Download taiga-back sources.
 RUN git clone https://github.com/taigaio/taiga-back.git taiga-back
 RUN cd ./taiga-back && git checkout stable
 
+# Download taiga-front-dist sources.
+RUN git clone https://github.com/taigaio/taiga-front-dist.git taiga-front-dist
+RUN cd ./taiga-front-dist && git checkout stable
+
+# Download taiga-events sources.
+RUN git clone https://github.com/taigaio/taiga-events.git taiga-events
+RUN cd ./taiga-events && npm install
+
 # Setup taiga-back.
 USER root
 RUN su - taiga -c '/bin/bash -ic "cd /home/taiga/taiga/src/taiga-back && mkvirtualenv -p /usr/bin/python3 taiga"'
 RUN su - taiga -c '/bin/bash -ic "cd /home/taiga/taiga/src/taiga-back && workon taiga && pip install -r requirements.txt && pip install psycopg2-binary"'
-RUN service postgresql start && \
-    su - taiga -c '/bin/bash -ic "cd /home/taiga/taiga/src/taiga-back && workon taiga && python manage.py migrate --noinput && python manage.py loaddata initial_user && python manage.py loaddata initial_project_templates && python manage.py compilemessages && python manage.py collectstatic --noinput"'
 
-# Setup sample data.
-#RUN service postgresql start && \
-#    su - taiga -c '/bin/bash -ic "cd /home/taiga/taiga/src/taiga-back && workon taiga && python manage.py sample_data"'
+# Grant to taiga.
+RUN chmod 777 /etc/circus/conf.d
+RUN chmod 777 /etc/nginx/conf.d
+RUN rm -f /etc/nginx/sites-enabled/default
+RUN sed -i 's/^[[:space:]]*bind[[:space:]]*.*$/bind 127.0.0.1/g' /etc/redis/redis.conf
+
+# Configure postgresql with the initial user and database.
+RUN service postgresql start && \
+    sudo -u postgres createuser taiga && \
+    sudo -u postgres createdb taiga -O taiga --encoding='utf-8' --locale=POSIX --template=template0 && \
+    service postgresql stop
+
+# Create a user named taiga, and a virtualhost for RabbitMQ (taiga-events).
+RUN service rabbitmq-server start && \
+    rabbitmqctl add_user taiga "${TAIGA_PASSWORD}" && \
+    rabbitmqctl add_vhost taiga && \
+    rabbitmqctl set_permissions -p taiga taiga ".*" ".*" ".*" && \
+    service rabbitmq-server stop
+
+# Setup basic data.
+RUN service postgresql start && \
+    su - taiga -c '/bin/bash -ic "cd /home/taiga/taiga/src/taiga-back && workon taiga && python manage.py migrate --noinput && python manage.py loaddata initial_user && python manage.py loaddata initial_project_templates && python manage.py compilemessages && python manage.py collectstatic --noinput"' && \
+    service postgresql stop
+
+# # Setup sample data.
+# RUN service postgresql start && \
+#     su - taiga -c '/bin/bash -ic "cd /home/taiga/taiga/src/taiga-back && workon taiga && python manage.py sample_data"' && \
+#     service postgresql stop
+
+# Copy taiga predefine files.
+USER taiga
+WORKDIR /home/taiga/taiga
+COPY ./taiga ./
 
 # Sets entry-point to bash.
-ENTRYPOINT ["/bin/bash"]
+USER root
+WORKDIR /home/taiga/taiga
+ENTRYPOINT ["/bin/bash", "-isc", "./bin/startup.sh && bash"]
