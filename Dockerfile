@@ -1,4 +1,4 @@
-# Use an official Python runtime as a parent image.
+# Use an official ubuntu runtime as a parent image.
 FROM ubuntu
 MAINTAINER keqiongpan@163.com
 
@@ -91,7 +91,12 @@ USER taiga
 WORKDIR /home/taiga/taiga
 COPY ./taiga ./
 
+# Change taiga's date format.
+WORKDIR /home/taiga/taiga/src/taiga-front-dist/dist/v-1537436040060/locales/taiga
+RUN sed -i -E 's/D+[^[:alpha:]]*M+[^[:alpha:]]*Y+|M+[^[:alpha:]]*D+[^[:alpha:]]*Y+|Y+[^[:alpha:]]*M+[^[:alpha:]]*D+/YYYY-MM-DD/g' locale-zh-hans.json
+RUN sed -i -E 's/\[at\] hh/HH/g' locale-zh-hans.json
+
 # Sets entry-point to bash.
 USER root
 WORKDIR /home/taiga/taiga
-CMD ./bin/startup.sh && bash
+CMD ./bin/startup.sh && tail -f ./log/nginx.access.log

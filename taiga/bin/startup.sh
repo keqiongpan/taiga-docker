@@ -73,3 +73,21 @@ service nginx start
 
 # Show all services's status.
 service --status-all
+
+# Show usage information.
+cat <<EOF
+================================================================
+Startup Finished!!
+
+Docker environment variable:
+$(env | grep '^TAIGA_')
+
+Docker available volume paths:
+$(cd ./src/taiga-back/static && pwd)
+$(cd ./src/taiga-back/media && pwd)
+$(cd /var/lib/postgresql && pwd)
+
+Now, you can visit taiga via ${TAIGA_SCHEME}://${TAIGA_DOMAIN}/.
+The taiga's administrator account initialize with admin/123123.
+================================================================
+EOF
